@@ -4,10 +4,12 @@
     <TargetFramework>net7.0</TargetFramework>
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
+    <UserSecretsId>ce2fb27f-fcfe-4188-95fb-3db76654b9b8</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
 	  <!--Authenticate user using jwt Bearer-->
+    <PackageReference Include="Mailjet.Api" Version="3.0.0" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="7.0.4" />
 	  <!--to be able to derive from IdentityDbContext inside our Context.cs-->
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="7.0.4" />
