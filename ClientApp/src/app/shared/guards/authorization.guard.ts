@@ -1,33 +1,46 @@
 import { Injectable } from '@angular/core';
-import { ActivatedRouteSnapshot, CanActivate, Router, RouterStateSnapshot, UrlTree } from '@angular/router';
+import {
+  ActivatedRouteSnapshot,
+  CanActivate,
+  Router,
+  RouterStateSnapshot,
+  UrlTree,
+} from '@angular/router';
 import { Observable, map } from 'rxjs';
 import { AccountService } from 'src/app/account/account.service';
 import { SharedService } from '../shared.service';
-import { User } from '../models/user';
+import { User } from '../models/account/user';
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class AuthorizationGuard {
-
-  constructor(private accountService: AccountService, 
+  constructor(
+    private accountService: AccountService,
     private sharedService: SharedService,
-    private router: Router){}
+    private router: Router
+  ) {}
 
   canActivate(
     route: ActivatedRouteSnapshot,
-    state: RouterStateSnapshot): Observable<boolean> {
-    return this.accountService.user$.pipe( 
+    state: RouterStateSnapshot
+  ): Observable<boolean> {
+    return this.accountService.user$.pipe(
       map((user: User | null) => {
-        if(user){
+        if (user) {
           return true;
         } else {
-          this.sharedService.showNotification(false, 'Restricted area', 'Leave immediately');
-          this.router.navigate(['/account/login'], {queryParams: {returnUrl: state.url}});
+          this.sharedService.showNotification(
+            false,
+            'Restricted area',
+            'Leave immediately'
+          );
+          this.router.navigate(['/account/login'], {
+            queryParams: { returnUrl: state.url },
+          });
           return false;
         }
-      }
-    ));
+      })
+    );
   }
-  
 }

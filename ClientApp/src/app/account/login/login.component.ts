@@ -4,7 +4,7 @@ import { AccountService } from '../account.service';
 import { ActivatedRoute, Router } from '@angular/router';
 import { SharedService } from 'src/app/shared/shared.service';
 import { take } from 'rxjs';
-import { User } from 'src/app/shared/models/user';
+import { User } from 'src/app/shared/models/account/user';
 
 @Component({
   selector: 'app-login',
@@ -24,19 +24,19 @@ export class LoginComponent implements OnInit {
     private activatedRoute: ActivatedRoute
   ) {
     this.accountService.user$.pipe(take(1)).subscribe({
-      next: (user: User | null ) => {
-        if(user){
-          this.router.navigateByUrl('/')
+      next: (user: User | null) => {
+        if (user) {
+          this.router.navigateByUrl('/');
         } else {
           this.activatedRoute.queryParamMap.subscribe({
             next: (params: any) => {
-              if(params){
+              if (params) {
                 this.returnUrl = params.get('returnUrl');
               }
-            }
-          })
+            },
+          });
         }
-      }
+      },
     });
   }
 
@@ -51,30 +51,31 @@ export class LoginComponent implements OnInit {
     });
   }
 
-  login(){
+  login() {
     this.submitted = true;
     this.errorMessages = [];
 
     if (this.loginForm.valid) {
       this.accountService.login(this.loginForm.value).subscribe({
         next: (response: any) => {
-          if(this.returnUrl) {
+          if (this.returnUrl) {
             this.router.navigateByUrl(this.returnUrl);
           } else {
             this.router.navigateByUrl('/');
           }
-          
         },
         error: (error) => {
-          if(error.error.errors){
+          if (error.error.errors) {
             this.errorMessages = error.error.errors;
           } else {
             this.errorMessages.push(error.error);
           }
-          
         },
       });
     }
+  }
 
+  resendEmailConfirmationLink() {
+    this.router.navigateByUrl('/account/send-email/resend-email-confirmation-link');
   }
 }

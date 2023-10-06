@@ -23,13 +23,17 @@
                 </div>
                 <div class="form-floating" *ngIf="errorMessages.length>0">
                     <app-validation-messages [errorMessages]="errorMessages"></app-validation-messages>
+                    <a class="btn btn-link" (click)="resendEmailConfirmationLink()"
+                    *ngIf="errorMessages[0].includes('Please confirm your email.')">
+                        Click here to receive an email confirmation in case you didn't receive
+                    </a>
                 </div> 
                 <div class="d-grid mt-4 px-1">
                     <button class="btn btn-lg btn-info" type="submit">Log in</button>
                 </div>
             </form>
             <div class="mt-4 text-center">
-                <a class="btn btn-link">
+                <a class="btn btn-link" routerLink="/account/send-email/forgot-username-or-password">
                     <h6>Forgot Username or Password?</h6>
                 </a>
             </div>
