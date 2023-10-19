@@ -9,6 +9,7 @@
 
   <ItemGroup>
 	  <!--Authenticate user using jwt Bearer-->
+    <PackageReference Include="Google.Apis.Auth" Version="1.62.1" />
     <PackageReference Include="Mailjet.Api" Version="3.0.0" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="7.0.4" />
 	  <!--to be able to derive from IdentityDbContext inside our Context.cs-->

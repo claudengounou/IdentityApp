@@ -1,10 +1,15 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, ElementRef, Inject, OnInit, Renderer2, ViewChild } from '@angular/core';
 import { FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { AccountService } from '../account.service';
 import { ActivatedRoute, Router } from '@angular/router';
 import { SharedService } from 'src/app/shared/shared.service';
 import { take } from 'rxjs';
 import { User } from 'src/app/shared/models/account/user';
+import { LoginWithExternal } from 'src/app/shared/models/account/loginWithExternal';
+import jwt_decode from 'jwt-decode';
+import { DOCUMENT } from '@angular/common';
+import { CredentialResponse } from 'google-one-tap';
+declare const FB: any;
 
 @Component({
   selector: 'app-login',
@@ -12,6 +17,7 @@ import { User } from 'src/app/shared/models/account/user';
   styleUrls: ['./login.component.css'],
 })
 export class LoginComponent implements OnInit {
+  @ViewChild('googleButton', {static:true}) googleButton: ElementRef = new ElementRef({});
   loginForm: FormGroup = new FormGroup({});
   submitted = false;
   errorMessages: string[] = [];
@@ -21,7 +27,10 @@ export class LoginComponent implements OnInit {
     private accountService: AccountService,
     private formBuilder: FormBuilder,
     private router: Router,
-    private activatedRoute: ActivatedRoute
+    private activatedRoute: ActivatedRoute,
+    private sharedService: SharedService,
+    private _renderer2: Renderer2,
+    @Inject(DOCUMENT) private _document: Document
   ) {
     this.accountService.user$.pipe(take(1)).subscribe({
       next: (user: User | null) => {
@@ -41,7 +50,16 @@ export class LoginComponent implements OnInit {
   }
 
   ngOnInit(): void {
+    this.initializeGoogleButton();
     this.initializeForm();
+  }
+
+  ngAfterViewInit(){
+    const script1 = this._renderer2.createElement('script');
+    script1.src = 'https://accounts.google.com/gsi/client';
+    script1.async = 'true';
+    script1.defer = 'true';
+    this._renderer2.appendChild(this._document.body, script1);
   }
 
   initializeForm() {
@@ -57,7 +75,7 @@ export class LoginComponent implements OnInit {
 
     if (this.loginForm.valid) {
       this.accountService.login(this.loginForm.value).subscribe({
-        next: (response: any) => {
+        next: _ => {
           if (this.returnUrl) {
             this.router.navigateByUrl(this.returnUrl);
           } else {
@@ -75,7 +93,67 @@ export class LoginComponent implements OnInit {
     }
   }
 
+  loginWithFacebook(){
+    FB.login(async (fbResult: any) => {
+      if(fbResult.authResponse){
+        const accessToken = fbResult.authResponse.accessToken;
+        const userId = fbResult.authResponse.userID;
+        console.log(fbResult);
+        this.accountService.loginWithThirdParty(new LoginWithExternal(accessToken, userId, "facebook")).subscribe({
+          next: () => {
+            if (this.returnUrl) {
+              this.router.navigateByUrl(this.returnUrl);
+            } else {
+              this.router.navigateByUrl('/');
+            }
+          },
+          error: (error) => {
+            this.sharedService.showNotification(false, "failed", error.error);
+          }
+        });
+      } else {
+        this.sharedService.showNotification(false, "Failed", "Unable to login with Facebook");
+      }
+    })
+
+  }
+
   resendEmailConfirmationLink() {
     this.router.navigateByUrl('/account/send-email/resend-email-confirmation-link');
+  }
+
+  private initializeGoogleButton(){
+    (window as any).onGoogleLibraryLoad = () => {
+      //@ts-ignore
+      google.accounts.id.initialize({
+        client_id: '333472307542-memm87rc7ub20n11ag9b9dujrdvted5m.apps.googleusercontent.com',
+        callback: this.googleCallback.bind(this),
+        auto_select:false,
+        cancel_on_tap_outside: true
+      });
+      //@ts-ignore
+      google.accounts.id.renderButton(
+        this.googleButton.nativeElement,
+        {size:'medium', shape: 'rectangular', text: 'signin_with', logo_alignment: 'center'}
+      );
+    }
+  }
+
+  private async googleCallback(response: CredentialResponse){
+    //console.log(response);
+    const decodedToken: any = jwt_decode(response.credential);
+   this.accountService.loginWithThirdParty(new LoginWithExternal(response.credential, decodedToken.sub,"google"))
+   .subscribe({
+    next: () => {
+      if (this.returnUrl) {
+        this.router.navigateByUrl(this.returnUrl);
+      } else {
+        this.router.navigateByUrl('/');
+      }
+    },
+    error: (error) => {
+      this.sharedService.showNotification(false, "failed", error.error);
+    }
+   });
   }
 }

@@ -1,6 +1,7 @@
 ﻿using Api.DTOs.Account;
 using Api.Models;
 using Api.Services;
+using Google.Apis.Auth;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
@@ -9,6 +10,8 @@ using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using System;
+using System.Net.Http;
+using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Text;
 using System.Threading.Tasks;
@@ -24,6 +27,7 @@ namespace Api.Controllers
         private readonly UserManager<User> _userManager;
         private readonly EmailService _emailService;
         private readonly IConfiguration _config;
+        private readonly HttpClient _facebookHttpClient;
 
         [Authorize]
         [HttpGet("refresh-user-token")]
@@ -44,6 +48,10 @@ namespace Api.Controllers
             _userManager = userManager;
             _emailService = emailService;
             _config = config;
+            _facebookHttpClient = new HttpClient
+            {
+                BaseAddress = new Uri("https://graph.facebook.com")
+            };
         }
 
         [HttpPost("login")]
@@ -59,6 +67,51 @@ namespace Api.Controllers
 
             return CreateApplicationUserDto(user);
         }
+
+        [HttpPost("login-with-third-party")]
+        public async Task<ActionResult<UserDto>> LoginWithThirdParty(LoginWithExternalDto model)
+        {
+            if (model.Provider.Equals(SD.Facebook))
+            {
+                try
+                {
+                    if (!FacebookValidatedAsync(model.Accesstoken, model.UserId).GetAwaiter().GetResult())
+                    {
+                        return Unauthorized("Unable to login with Facebook");
+                    }
+                }
+                catch (Exception)
+                {
+                    return Unauthorized("Unable to login with Facebook");
+                }
+
+            }
+            else if (model.Provider.Equals(SD.Google))
+            {
+                try
+                {
+                    if (!GoogleValidatedAsync(model.Accesstoken, model.UserId).GetAwaiter().GetResult())
+                    {
+                        return Unauthorized("Unable to login with Google");
+                    }
+                }
+                catch (Exception)
+                {
+                    return Unauthorized("Unable to login with Google");
+                }
+
+            }
+            else
+            {
+                return BadRequest("Invalid provider");
+            }
+
+            var user = await _userManager.Users.FirstOrDefaultAsync(x => x.UserName == model.UserId && x.Provider==model.Provider);
+            if (user == null) return Unauthorized("Unable to find your account");
+            return CreateApplicationUserDto(user);
+
+        }
+
 
         [HttpPost("register")]
         public async Task<IActionResult> Register(RegisterDto model)
@@ -89,13 +142,64 @@ namespace Api.Controllers
 
                 return BadRequest("Failed to send mail. Please contact admin");
             }
-            catch(Exception ex)
+            catch(Exception)
             {
                 return BadRequest("Failed to send mail. Please contact admin");
+            }           
+
+        }
+
+        [HttpPost("register-with-third-party")]
+        public async Task<ActionResult<UserDto>> RegisterWithThirdParty(RegisterWithExternalDto model)
+        {
+            if (model.Provider.Equals(SD.Facebook))
+            {
+                try
+                {
+                    if(!FacebookValidatedAsync(model.AccessToken, model.UserId).GetAwaiter().GetResult())
+                    {
+                        return Unauthorized("Unable to register with Facebook");
+                    }
+                }
+                catch (Exception)
+                {
+                    return Unauthorized("Unable to register with Facebook");
+                }
+
             }
+            else if(model.Provider.Equals(SD.Google))
+            {
+                try
+                {
+                    if (!GoogleValidatedAsync(model.AccessToken, model.UserId).GetAwaiter().GetResult())
+                    {
+                        return Unauthorized("Unable to register with Google");
+                    }  
+                }
+                catch (Exception)
+                {
+                    return Unauthorized("Unable to register with Google");
+                }
+            }
+            else
+            {
+                return BadRequest("Invalid provider");
+            }
+           
+            var user = await _userManager.FindByNameAsync(model.UserId);
+            if (user != null) return BadRequest(string.Format("You have an account already. Please log in with your {0}", model.Provider));
+            var userToADD = new User
+            {
+                FirstName = model.FirstName,
+                LastName = model.LastName,
+                UserName = model.UserId,
+                Provider = model.Provider,
+            };
 
-            
+            var result = await _userManager.CreateAsync(userToADD);
+            if (!result.Succeeded) return BadRequest(result.Errors);
 
+            return CreateApplicationUserDto(userToADD);
         }
 
         [HttpPut("confirm-email")]
@@ -117,7 +221,7 @@ namespace Api.Controllers
 
                 return BadRequest("Invalid token, please try again");
             }
-            catch(Exception ex)
+            catch(Exception)
             {
                 return BadRequest("Invalid token, please try again");
             }
@@ -141,7 +245,7 @@ namespace Api.Controllers
                 return BadRequest("Failed to send mail. Please contact admin");
 
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 return BadRequest("Failed to send mail. Please contact admin");
             }
@@ -167,7 +271,7 @@ namespace Api.Controllers
                 return BadRequest("Failed to send mail. Please contact admin");
 
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 return BadRequest("Failed to send mail. Please contact admin");
             }
@@ -195,7 +299,7 @@ namespace Api.Controllers
 
                 return BadRequest("Invalid token, please try again");
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 return BadRequest("Invalid token, please try again");
             }
@@ -252,6 +356,53 @@ namespace Api.Controllers
         {
             return await _userManager.Users.AnyAsync(x=> x.Email == email.ToLower());
         }
+
+        public async Task<bool> FacebookValidatedAsync(string accessToken, string userId)
+        {
+            var facebookKeys = _config["Facebook:AppId"] + "|" + _config["Facebook:AppSecret"];
+            var fbResult = await _facebookHttpClient.GetFromJsonAsync<FacebookResultDto>($"debug_token?input_token={accessToken}&access_token={facebookKeys}");
+
+            if(fbResult == null || fbResult.Data.Is_Valid == false || !fbResult.Data.User_Id.Equals(userId) )
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        public async Task<bool> GoogleValidatedAsync(string accessToken, string userId)
+        {
+            var payLoad = await GoogleJsonWebSignature.ValidateAsync(accessToken);
+            if (!payLoad.Audience.Equals(_config["Google:ClientId"]))
+            {
+                return false;
+            }
+
+            if(!payLoad.Issuer.Equals("accounts.google.com") && !payLoad.Issuer.Equals("https://accounts.google.com"))
+            {
+                return false;
+            }
+
+            if(payLoad.ExpirationTimeSeconds == null)
+            {
+                return false;
+            }
+
+            DateTime now = DateTime.Now.ToUniversalTime();
+            DateTime expiration = DateTimeOffset.FromUnixTimeSeconds((long)payLoad.ExpirationTimeSeconds).DateTime;
+            if(now > expiration)
+            {
+                return false;
+            }
+
+            if (!payLoad.Subject.Equals(userId))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
         #endregion
     }
 }
